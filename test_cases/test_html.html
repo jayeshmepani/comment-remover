@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<!-- HTML Test file - complex edge cases -->
+<html lang="en">
+<head>
+    <!-- Meta comment -->
+    <meta charset="UTF-8">
+    <meta name="description" content="<!-- not a comment -->">
+    
+    <!-- Title comment -->
+    <title>Test Page</title>
+    
+    <!-- CSS with comment-like content -->
+    <style>
+        /* CSS block comment */
+        .class {
+            color: red; /* inline */
+            content: "/* not comment */";
+        }
+        // This is NOT valid CSS but might appear
+    </style>
+    
+    <!-- JS with comment-like content -->
+    <script>
+        // JS line comment
+        const x = 1; // inline
+        /* block */
+        const s = "/* not comment */";
+        const r = /pattern/; // regex
+    </script>
+</head>
+<body>
+    <!-- Main comment -->
+    <header>
+        <!-- Nav comment -->
+        <nav>
+            <!-- List comment -->
+            <ul>
+                <li>Item 1</li>
+                <li>Item 2</li>
+            </ul>
+        </nav>
+    </header>
+    
+    <!-- Content comment -->
+    <main>
+        <!-- Article comment -->
+        <article>
+            <h1>Title</h1>
+            <!-- Paragraph comment -->
+            <p>Text with &lt;!-- not a comment --&gt; escaped</p>
+            <p>Text with <!-- actual comment --> inline</p>
+        </article>
+        
+        <!-- Section comment -->
+        <section>
+            <!-- Self-closing -->
+            <img src="image.jpg" alt="Image">
+            <br>
+            <hr>
+        </section>
+    </main>
+    
+    <!-- Footer comment -->
+    <footer>
+        <!-- Copyright -->
+        <p>&copy; 2024</p>
+    </footer>
+    
+    <!-- Conditional comment (old IE) -->
+    <!--[if IE]>
+    <p>IE only</p>
+    <![endif]-->
+    
+    <!-- Script at end -->
+    <script>
+        // Final JS comment
+        console.log("loaded");
+        /* Block */
+        const url = "http://example.com"; // URL
+    </script>
+</body>
+<!-- Final HTML comment -->
+</html>

@@ -1,0 +1,96 @@
+{# Jinja/Twig Test file - complex edge cases #}
+<!DOCTYPE html>
+<html>
+<head>
+    {# Meta comment #}
+    <title>{% block title %}Default{% endblock %}</title>
+    
+    {# CSS with comments #}
+    <style>
+        /* CSS comment */
+        .class { color: red; }
+    </style>
+    
+    {# JS with comments #}
+    <script>
+        // JS comment
+        const x = 1;
+        /* block */
+    </script>
+</head>
+<body>
+    {# Header comment #}
+    <header>
+        {# Nav comment #}
+        <nav>
+            {% if show_nav %}
+                {# If comment #}
+                <ul>
+                    {% for item in items %}
+                        {# Loop comment #}
+                        <li>{{ item.name }}</li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
+        </nav>
+    </header>
+    
+    {# Main content #}
+    <main>
+        {# Include comment #}
+        {% include 'partials/sidebar.html' %}
+        
+        {# Section comment #}
+        <section>
+            {# Set variable #}
+            {% set var = 1 %}
+            
+            {# Output comment #}
+            <p>{{ content }}</p>
+            
+            {# Filter comment #}
+            <p>{{ name|upper|escape }}</p>
+            
+            {# Test comment #}
+            {% if items is not empty %}
+                <p>Has items</p>
+            {% endif %}
+        </section>
+        
+        {# Macro comment #}
+        {% macro input(name, value='', type='text') %}
+            {# Macro body #}
+            <input type="{{ type }}" name="{{ name }}" value="{{ value }}">
+        {% endmacro %}
+        
+        {# Use macro #}
+        {{ input('username') }}
+        
+        {# Embed comment #}
+        {% embed "base.html" %}
+            {# Embedded block #}
+            {% block content %}
+                Content here
+            {% endblock %}
+        {% endembed %}
+    </main>
+    
+    {# Footer #}
+    <footer>
+        {# Copyright #}
+        <p>&copy; {{ now()|date('Y') }}</p>
+        
+        {# HTML comment inside Jinja #}
+        <!-- Regular HTML comment -->
+    </footer>
+    
+    {# Final scripts #}
+    <script>
+        {# This is NOT valid JS but might appear #}
+        // Final JS
+        const url = "http://example.com";
+        /* block */
+    </script>
+</body>
+{# End of file #}
+</html>

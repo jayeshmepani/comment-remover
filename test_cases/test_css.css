@@ -1,0 +1,119 @@
+/* CSS Test file - complex edge cases */
+
+/* Simple block comment */
+.selector {
+    /* property comment */
+    color: red;
+    background: blue; /* inline property */
+}
+
+/*
+ * Multi-line comment
+ * Line 2
+ * Line 3
+ */
+.multi {
+    margin: 0;
+    padding: 0;
+}
+
+/* String with comment-like content */
+.string-test {
+    content: "/* not a comment */";
+    content: '// also not';
+    content: url("http://example.com"); /* URL comment */
+}
+
+/* Nested looking (not actually nested in CSS) */
+.nested-looking {
+    /* looks like nesting but isn't */
+}
+
+/* Pseudo classes */
+.pseudo:hover {
+    /* hover comment */
+    color: green;
+}
+
+.pseudo::before {
+    /* pseudo-element comment */
+    content: "";
+}
+
+/* Media query */
+@media (max-width: 768px) {
+    /* media comment */
+    .responsive {
+        width: 100%;
+    }
+}
+
+/* Keyframes */
+@keyframes slide {
+    /* keyframe comment */
+    0% {
+        /* from comment */
+        transform: translateX(0);
+    }
+    100% {
+        /* to comment */
+        transform: translateX(100px);
+    }
+}
+
+/* Import */
+@import url("other.css"); /* import comment */
+
+/* Variables (CSS custom properties) */
+:root {
+    /* root comment */
+    --main-color: blue; /* variable comment */
+}
+
+.uses-var {
+    color: var(--main-color); /* var comment */
+}
+
+/* Calc */
+.calc {
+    width: calc(100% - 20px); /* calc comment */
+}
+
+/* Grid/Flex */
+.grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr); /* grid comment */
+}
+
+.flex {
+    display: flex;
+    justify-content: center; /* flex comment */
+}
+
+/* Multiple selectors */
+.sel1,
+.sel2, /* selector comment */
+.sel3 {
+    color: black;
+}
+
+/* Child combinator */
+.parent > .child {
+    /* child comment */
+    color: red;
+}
+
+/* Adjacent sibling */
+.h1 + p {
+    /* sibling comment */
+    margin-top: 0;
+}
+
+/* Attribute selector */
+[type="text"] {
+    /* attribute comment */
+    border: 1px solid;
+}
+
+/* Final */
+/* end of file */

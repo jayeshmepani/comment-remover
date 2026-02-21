@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+    
+    <meta charset="UTF-8">
+    <meta name="description" content="">
+    
+    
+    <title>Test Page</title>
+    
+    
+    <style>
+                               
+        .class {
+            color: red;             
+            content: "/* not comment */";
+        }
+        // This is NOT valid CSS but might appear
+    </style>
+    
+    
+    <script>
+                          
+        const x = 1;          
+                   
+        const s = "/* not comment */";
+        const r = /pattern/;         
+    </script>
+</head>
+<body>
+    
+    <header>
+        
+        <nav>
+            
+            <ul>
+                <li>Item 1</li>
+                <li>Item 2</li>
+            </ul>
+        </nav>
+    </header>
+    
+    
+    <main>
+        
+        <article>
+            <h1>Title</h1>
+            
+            <p>Text with &lt;!-- not a comment --&gt; escaped</p>
+            <p>Text with  inline</p>
+        </article>
+        
+        
+        <section>
+            
+            <img src="image.jpg" alt="Image">
+            <br>
+            <hr>
+        </section>
+    </main>
+    
+    
+    <footer>
+        
+        <p>&copy; 2024</p>
+    </footer>
+    
+    
+    
+    
+    
+    <script>
+                           
+        console.log("loaded");
+                   
+        const url = "http://example.com";       
+    </script>
+</body>
+
+</html>

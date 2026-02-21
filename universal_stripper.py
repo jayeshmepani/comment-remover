@@ -1,44 +1,19 @@
 #!/usr/bin/env python3
 """
 universal_stripper.py
-Universal comment stripper with:
-- Tree-sitter parsing (best accuracy) when available
-- Safe fallbacks (Python tokenize; basic CSS/HTML/PHP regex)
-- Exclude support (glob + regex)
-- Keep-directive support (for Python tokenize path; tree-sitter path removes all comments by default)
-
-Install (recommended):
-  pip install tree_sitter tree_sitter_languages
-
-Usage:
-  python3 universal_stripper.py ./project --dry-run
-  python3 universal_stripper.py ./project --exclude "node_modules/**" --exclude "**/*.min.js"
+Comment stripper with behavior intentionally kept in sync with universal_stripper.php.
 """
 
 import argparse
 import fnmatch
 import io
-import os
+import json
 import re
+import subprocess
 import sys
-from pathlib import Path
-from typing import Iterable
-
-# -------------------------
-# Optional: tree-sitter
-# -------------------------
-try:
-    from tree_sitter_languages import (
-        get_parser,
-    )  # pip install tree_sitter tree_sitter_languages
-except Exception:
-    get_parser = None
-
-# -------------------------
-# Python tokenize fallback
-# -------------------------
 import tokenize
-
+from pathlib import Path
+from typing import Iterable, List, Optional, Pattern, Sequence
 
 SUPPORTED_EXTS = {
     ".php",
@@ -58,42 +33,53 @@ SUPPORTED_EXTS = {
     ".twig",
 }
 
-LANG_BY_EXT = {
-    ".js": "javascript",
-    ".jsx": "javascript",
-    ".ts": "typescript",
-    ".tsx": "tsx",
-    ".css": "css",
-    ".scss": "scss",  # if not present, we fallback to css
-    ".html": "html",
-    ".htm": "html",
-    ".php": "php",
-    ".py": "python",
-    ".jinja": "html",
-    ".jinja2": "html",
-    ".j2": "html",
-    ".twig": "html",
-}
+DEFAULT_EXCLUDES = [
+    ".git/**",
+    "node_modules/**",
+    "vendor/**",
+    "dist/**",
+    "build/**",
+    "public/build/**",
+    "coverage/**",
+    ".next/**",
+    ".nuxt/**",
+    ".cache/**",
+    "storage/**",
+    "bootstrap/cache/**",
+    "resources/js/actions/**",
+    "venv/**",
+    ".venv/**",
+    "*.min.js",
+    "**/*.min.js",
+    "*.min.css",
+    "**/*.min.css",
+    ".idea/**",
+    ".vscode/**",
+]
 
-BLADE_COMMENT_RE = re.compile(r"\{\-\-.*?\-\-\}", re.DOTALL)
-HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+BLADE_COMMENT_RE = re.compile(r"\{\{\-\-.*?\-\-\}\}", re.DOTALL)
+HTML_COMMENT_RE = re.compile(r"<!--(?!\s*(?:\[if |<!\[endif\]))[\s\S]*?-->")
 JINJA_COMMENT_RE = re.compile(r"\{#.*?#\}", re.DOTALL)
+SCRIPT_BLOCK_RE = re.compile(
+    r"(<script\b[^>]*>)(.*?)(</script\s*>)", re.IGNORECASE | re.DOTALL
+)
+STYLE_BLOCK_RE = re.compile(
+    r"(<style\b[^>]*>)(.*?)(</style\s*>)", re.IGNORECASE | re.DOTALL
+)
 
 
-def _ensure_trailing_newline(s: str) -> str:
+def ensure_trailing_newline(s: str) -> str:
     return s if s.endswith("\n") else (s + "\n")
 
 
-def clean_whitespace(content: str, collapse_blank_lines: int | None) -> str:
-    # 1. Remove trailing whitespace from each line
+def clean_whitespace(content: str, collapse_blank_lines: Optional[int]) -> str:
     lines = [ln.rstrip() for ln in content.splitlines()]
 
-    # 2. Collapse blank runs if requested
     if collapse_blank_lines is not None and collapse_blank_lines >= 0:
-        new_lines = []
+        new_lines: List[str] = []
         blank_count = 0
         for ln in lines:
-            if not ln:  # effectively blank
+            if not ln:
                 blank_count += 1
                 if blank_count <= (collapse_blank_lines + 1):
                     new_lines.append(ln)
@@ -102,138 +88,7 @@ def clean_whitespace(content: str, collapse_blank_lines: int | None) -> str:
                 new_lines.append(ln)
         lines = new_lines
 
-    out = "\n".join(lines)
-    return _ensure_trailing_newline(out)
-
-
-def strip_blade_html_comments(text: str) -> str:
-    text = BLADE_COMMENT_RE.sub("", text)
-    text = HTML_COMMENT_RE.sub("", text)
-    return text
-
-
-def strip_jinja_twig_comments(text: str) -> str:
-    text = JINJA_COMMENT_RE.sub("", text)
-    text = HTML_COMMENT_RE.sub("", text)
-    return text
-
-
-def strip_python_tokenize(text: str, keep_directives: tuple[str, ...] = ()) -> str:
-    """
-    Removes Python # comments using tokenize (reliable).
-    Does NOT remove docstrings (intentionally).
-    keep_directives: list of regex patterns; matching comments are kept.
-    """
-    keep_res = [re.compile(p) for p in keep_directives] if keep_directives else []
-
-    out_tokens = []
-    reader = io.StringIO(text).readline
-
-    for tok in tokenize.generate_tokens(reader):
-        if tok.type == tokenize.COMMENT:
-            if keep_res and any(r.search(tok.string) for r in keep_res):
-                out_tokens.append(tok)
-            else:
-                continue  # drop comment
-        else:
-            out_tokens.append(tok)
-
-    return tokenize.untokenize(out_tokens)
-
-
-def strip_with_treesitter(
-    text: str,
-    language: str,
-    keep_line_comment_directives: tuple[str, ...] = (),
-) -> str | None:
-    """
-    Removes comment nodes using tree-sitter if available; returns None if unavailable.
-    Preserves newlines (replaces comment chars with spaces to keep line numbers stable).
-
-    keep_line_comment_directives:
-      If provided, we will keep line comments whose TEXT matches any regex.
-      Note: This requires extracting the comment text; applies to both line/block comments.
-    """
-    if get_parser is None:
-        return None
-
-    lang_try = [language]
-    if language == "scss":
-        lang_try.append("css")
-
-    parser = None
-    chosen_lang = language
-    for lang in lang_try:
-        try:
-            parser = get_parser(lang)
-            chosen_lang = lang
-            break
-        except Exception:
-            continue
-
-    if parser is None:
-        return None
-
-    keep_res = (
-        [re.compile(p) for p in keep_line_comment_directives]
-        if keep_line_comment_directives
-        else []
-    )
-
-    data = text.encode("utf-8", errors="surrogatepass")
-    tree = parser.parse(data)
-    root = tree.root_node
-
-    spans_set: set[tuple[int, int]] = set()
-
-    def collect(node):
-        # Many grammars use: comment, line_comment, block_comment, etc.
-        if "comment" in node.type:
-            if keep_res:
-                comment_text = data[node.start_byte : node.end_byte].decode(
-                    "utf-8", errors="surrogatepass"
-                )
-                if any(r.search(comment_text) for r in keep_res):
-                    return  # keep this comment
-
-            # Special handling for JSX: { /* comment */ }
-            # If the comment is the only thing inside a jsx_expression, remove the whole expression (including braces).
-            parent = node.parent
-            if parent and parent.type == "jsx_expression":
-                is_empty_jsx = True
-                for c in parent.children:
-                    # A jsx_expression normally has '{', some content, and '}'
-                    if c.type not in (
-                        "{",
-                        "}",
-                        "comment",
-                        "line_comment",
-                        "block_comment",
-                    ):
-                        is_empty_jsx = False
-                        break
-                if is_empty_jsx:
-                    spans_set.add((parent.start_byte, parent.end_byte))
-                    return
-
-            spans_set.add((node.start_byte, node.end_byte))
-            return
-        for ch in node.children:
-            collect(ch)
-
-    collect(root)
-
-    if not spans_set:
-        return text
-
-    spans = sorted(list(spans_set), reverse=True)
-    b = bytearray(data)
-    for start, end in spans:
-        for i in range(start, end):
-            if b[i] != 10:  # \n
-                b[i] = 32  # space
-
-    return b.decode("utf-8", errors="surrogatepass")
+    return ensure_trailing_newline("\n".join(lines))
 
 
 def detect_ext(path: Path) -> str:
@@ -244,7 +99,6 @@ def detect_ext(path: Path) -> str:
 
 
 def rel_posix(path: Path, base: Path) -> str:
-    """Return path relative to base, normalized to forward slashes."""
     try:
         return path.relative_to(base).as_posix()
     except ValueError:
@@ -252,10 +106,12 @@ def rel_posix(path: Path, base: Path) -> str:
 
 
 def is_excluded(
-    rel_path: str, exclude_globs: Iterable[str], exclude_regexes: Iterable[re.Pattern]
+    rel_path: str, exclude_globs: Iterable[str], exclude_regexes: Iterable[Pattern[str]]
 ) -> bool:
     for pat in exclude_globs:
         if fnmatch.fnmatch(rel_path, pat):
+            return True
+        if pat.startswith("**/") and fnmatch.fnmatch(rel_path, pat[3:]):
             return True
     for rx in exclude_regexes:
         if rx.search(rel_path):
@@ -263,10 +119,251 @@ def is_excluded(
     return False
 
 
+def strip_blade_html_comments(text: str) -> str:
+    return HTML_COMMENT_RE.sub("", BLADE_COMMENT_RE.sub("", text))
+
+
+def strip_jinja_twig_comments(text: str) -> str:
+    return HTML_COMMENT_RE.sub("", JINJA_COMMENT_RE.sub("", text))
+
+
+def strip_python_linewise_safe(text: str, keep_res: Sequence[Pattern[str]]) -> str:
+    lines = text.splitlines(keepends=True)
+    out: List[str] = []
+
+    in_triple: Optional[str] = None
+    for line in lines:
+        i = 0
+        in_sq = False
+        in_dq = False
+        escaped = False
+        comment_idx: Optional[int] = None
+
+        while i < len(line):
+            ch = line[i]
+            nxt3 = line[i : i + 3]
+
+            if in_triple:
+                if not escaped and nxt3 == in_triple:
+                    in_triple = None
+                    i += 3
+                    continue
+                escaped = (ch == "\\") and not escaped
+                i += 1
+                continue
+
+            if escaped:
+                escaped = False
+                i += 1
+                continue
+
+            if ch == "\\" and (in_sq or in_dq):
+                escaped = True
+                i += 1
+                continue
+
+            if not in_sq and not in_dq and nxt3 in ("'''", '"""'):
+                in_triple = nxt3
+                i += 3
+                continue
+
+            if ch == "'" and not in_dq:
+                in_sq = not in_sq
+                i += 1
+                continue
+            if ch == '"' and not in_sq:
+                in_dq = not in_dq
+                i += 1
+                continue
+
+            if ch == "#" and not in_sq and not in_dq:
+                comment_idx = i
+                break
+            i += 1
+
+        if comment_idx is None:
+            out.append(line)
+            continue
+
+        comment = line[comment_idx:]
+        if keep_res and any(r.search(comment) for r in keep_res):
+            out.append(line)
+            continue
+
+        out.append(line[:comment_idx].rstrip() + ("\n" if line.endswith("\n") else ""))
+
+    return "".join(out)
+
+
+def strip_python_tokenize(text: str, keep_res: Sequence[Pattern[str]]) -> str:
+    out_tokens = []
+    reader = io.StringIO(text).readline
+    try:
+        for tok in tokenize.generate_tokens(reader):
+            if tok.type == tokenize.COMMENT:
+                if keep_res and any(r.search(tok.string) for r in keep_res):
+                    out_tokens.append(tok)
+                else:
+                    continue
+            else:
+                out_tokens.append(tok)
+    except tokenize.TokenError:
+        return strip_python_linewise_safe(text, keep_res)
+    return tokenize.untokenize(out_tokens)
+
+
+def strip_c_style_comments_safe(
+    text: str,
+    keep_res: Sequence[Pattern[str]],
+    is_jsx: bool = False,
+    allow_line_comments: bool = True,
+    allow_hash_comments: bool = False,
+) -> str:
+    parts = []
+    if is_jsx:
+        parts.append(r"(\{\s*(?:\/\*[\s\S]*?\*\/|\/\/[^\n]*)\s*\})")
+    else:
+        parts.append(r"()")
+
+    parts.append(r"(\'(?:\\.|[^\'\\])*\')")
+    parts.append(r'("(?:\\.|[^"\\])*")')
+    parts.append(r"(`(?:\\.|[^`\\])*`)")
+    parts.append(r"(url\([^)]+\))")  # Protected unquoted CSS urls
+    parts.append(
+        r"((?:(?<=[=(,;:!&|?~^])|(?<=return)|(?<=typeof)|(?<=:))\s*\/(?![\/\*])(?:\\.|[^\/\\\n])+\/[gimsuy]*)"
+    )
+    parts.append(r"(\/\*[\s\S]*?\*\/)")
+    parts.append(r"(\/\/.*$)" if allow_line_comments else r"()")
+    parts.append(r"(\#.*$)" if allow_hash_comments else r"()")
+
+    pattern = re.compile("|".join(parts), re.MULTILINE)
+
+    def replacer(match: re.Match[str]) -> str:
+        idx = 0
+        val = ""
+        for i in range(1, 9):
+            grp = match.group(i)
+            if grp is not None:
+                idx = i
+                val = grp
+                break
+
+        if idx == 0:
+            return match.group(0)
+
+        is_comment = idx in (7, 8, 9) or (idx == 1 and val.strip())
+        if not is_comment:
+            return val
+
+        inner = val
+        if idx == 1:
+            inner = re.sub(r"^\{\s*|\s*\}$", "", val)
+        if keep_res and any(r.search(inner) for r in keep_res):
+            return val
+
+        return re.sub(r"[^\n]", " ", val)
+
+    return pattern.sub(replacer, text)
+
+
+def strip_html_blade_content(
+    text: str, ext: str, keep_res: Sequence[Pattern[str]], keep_patterns: Sequence[str]
+) -> str:
+    parts = []
+    parts.append(r"(<script\b[^>]*>)(.*?)(</script\s*>)")
+    parts.append(r"(<style\b[^>]*>)(.*?)(</style\s*>)")
+    if ext == ".blade.php":
+        parts.append(r"(@verbatim)(.*?)(@endverbatim)")
+        parts.append(r"(@php)(.*?)(@endphp)")
+        parts.append(r"(\{\{\-\-.*?\-\-\}\})")
+    else:
+        parts.append(r"()()()")
+        parts.append(r"()()()")
+        parts.append(r"()")
+    parts.append(r"(<!--(?!\s*(?:\[if |<!\[endif\]))[\s\S]*?-->)")
+
+    pattern = re.compile("|".join(parts), re.IGNORECASE | re.DOTALL)
+
+    def replacer(match: re.Match[str]) -> str:
+        # Indices and logic
+        idx = 0
+        for i in range(1, 15):
+            if match.group(i) is not None:
+                idx = i
+                break
+
+        if idx == 1:  # <script>
+            o, inner, c = match.group(1), match.group(2), match.group(3)
+            stripped = strip_c_style_comments_safe(
+                inner,
+                keep_res=keep_res,
+                allow_line_comments=True,
+                allow_hash_comments=False,
+            )
+            return f"{o}{stripped}{c}"
+        elif idx == 4:  # <style>
+            o, inner, c = match.group(4), match.group(5), match.group(6)
+            stripped = strip_c_style_comments_safe(
+                inner,
+                keep_res=keep_res,
+                allow_line_comments=False,
+                allow_hash_comments=False,
+            )
+            return f"{o}{stripped}{c}"
+        elif idx == 7:  # @verbatim
+            return match.group(0)  # Preserve exactly
+        elif idx == 10:  # @php
+            o, inner, c = match.group(10), match.group(11), match.group(12)
+            php_out = strip_php_tokens_via_php(inner, keep_patterns)
+            if php_out is not None:
+                stripped = php_out
+            else:
+                stripped = strip_c_style_comments_safe(
+                    inner,
+                    keep_res=keep_res,
+                    allow_line_comments=True,
+                    allow_hash_comments=True,
+                )
+            return f"{o}{stripped}{c}"
+        elif idx == 13:  # blade comment
+            return re.sub(r"[^\n]", " ", match.group(13))
+        elif idx == 14:  # html comment
+            return re.sub(r"[^\n]", " ", match.group(14))
+
+        return match.group(0)
+
+    return pattern.sub(replacer, text)
+
+
+def strip_php_tokens_via_php(text: str, keep_patterns: Sequence[str]) -> Optional[str]:
+    php_code = r"""$keep=json_decode($argv[1],true);if(!is_array($keep)){$keep=[];}
+$raw=stream_get_contents(STDIN);$tokens=@token_get_all($raw);if(!is_array($tokens)){fwrite(STDERR,"tokenize failed\n");exit(1);} 
+$compiled=[];foreach($keep as $rx){$safe=str_replace("~","\\~",$rx);$pat="~{$safe}~";if(@preg_match($pat,"")===false){fwrite(STDERR,"bad regex\n");exit(2);} $compiled[]=$pat;}
+$out="";foreach($tokens as $t){if(is_array($t)){if($t[0]===T_COMMENT||$t[0]===T_DOC_COMMENT){$keepit=false;foreach($compiled as $p){if(preg_match($p,$t[1])){$keepit=true;break;}}if($keepit){$out.=$t[1];}else{$out.=preg_replace('/[^\n]/',' ',$t[1]);}continue;}$out.=$t[1];}else{$out.=$t;}}
+echo $out;"""
+
+    cmd = ["php", "-r", php_code, json.dumps(list(keep_patterns))]
+    try:
+        proc = subprocess.run(
+            cmd,
+            input=text,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except Exception:
+        return None
+
+    if proc.returncode != 0:
+        return None
+    return proc.stdout
+
+
 def process_file(
     path: Path,
-    collapse_blank_lines: int | None,
-    keep_directives: tuple[str, ...],
+    collapse_blank_lines: Optional[int],
+    keep_patterns: Sequence[str],
+    keep_res: Sequence[Pattern[str]],
     dry_run: bool,
     no_whitespace: bool,
 ) -> bool:
@@ -277,57 +374,36 @@ def process_file(
     original = path.read_text(encoding="utf-8", errors="surrogatepass")
     text = original
 
-    # Blade/HTML comments can exist inside blade/html
-    if ext in {".blade.php", ".html", ".htm"}:
-        text = strip_blade_html_comments(text)
-    elif ext in {".jinja", ".jinja2", ".j2", ".twig"}:
-        text = strip_jinja_twig_comments(text)
-
-    # Decide language
-    lang = LANG_BY_EXT.get(ext)
-    if ext == ".blade.php":
-        lang = "html"
-
-    # 1. Tree-sitter pass (best for JS/TS/PHP/CSS/HTML/PY)
-    ts_out = None
-    if lang:
-        ts_out = strip_with_treesitter(
-            text, lang, keep_line_comment_directives=keep_directives
+    if ext == ".py":
+        text = strip_python_tokenize(text, keep_res)
+    elif ext == ".php":
+        php_out = strip_php_tokens_via_php(text, keep_patterns)
+        if php_out is not None:
+            text = php_out
+        else:
+            text = strip_c_style_comments_safe(
+                text,
+                keep_res=keep_res,
+                allow_line_comments=True,
+                allow_hash_comments=True,
+            )
+    elif ext in {".js", ".jsx", ".ts", ".tsx", ".scss", ".css"}:
+        text = strip_c_style_comments_safe(
+            text,
+            keep_res=keep_res,
+            is_jsx=(ext in {".jsx", ".tsx"}),
+            allow_line_comments=(ext != ".css"),
+            allow_hash_comments=False,
         )
+    elif ext in {".html", ".htm", ".blade.php", ".jinja", ".jinja2", ".j2", ".twig"}:
+        text = strip_html_blade_content(text, ext, keep_res, keep_patterns)
+        if ext in {".jinja", ".jinja2", ".j2", ".twig"}:
+            text = strip_jinja_twig_comments(text)
 
-    if ts_out is not None:
-        text = ts_out
-
-    # 2. Supplemental / Fallback passes
-    if ext == ".py" and ts_out is None:
-        text = strip_python_tokenize(text, keep_directives=keep_directives)
-    elif ext in {".css", ".scss"}:
-        if ts_out is None:
-            text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
-        if ext == ".scss":
-            # Always run line-comment removal side-pass for SCSS
-            text = re.sub(r"(?<!:)\/\/.*$", "", text, flags=re.MULTILINE)
-    elif ext in {".html", ".htm", ".blade.php"}:
-        # In HTML/Blade, we often have JS/PHP embedded.
-        text = re.sub(r"(?<!:)\/\/.*$", "", text, flags=re.MULTILINE)
-        text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
-        if ext == ".blade.php":
-            text = strip_blade_html_comments(text)
-    elif ext in {".jinja", ".jinja2", ".j2", ".twig"}:
-        # Jinja2/Twig: strip any embedded JS/CSS comments
-        text = re.sub(r"(?<!:)\/\/.*$", "", text, flags=re.MULTILINE)
-        text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
-        text = strip_jinja_twig_comments(text)
-    elif ext in {".php"}:
-        if ts_out is None:
-            text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
-            text = re.sub(r"//.*?$", "", text, flags=re.MULTILINE)
-
-    # Whitespace cleanup unless disabled
     if not no_whitespace:
         text = clean_whitespace(text, collapse_blank_lines)
     else:
-        text = _ensure_trailing_newline(text)
+        text = ensure_trailing_newline(text)
 
     if text != original:
         if dry_run:
@@ -342,8 +418,8 @@ def process_file(
 
 def iter_files(
     target: Path,
-    exclude_globs: list[str],
-    exclude_regexes: list[re.Pattern],
+    exclude_globs: List[str],
+    exclude_regexes: List[Pattern[str]],
 ):
     base = target if target.is_dir() else target.parent
 
@@ -356,54 +432,58 @@ def iter_files(
     for p in target.rglob("*"):
         if not p.is_file():
             continue
-
         ext = detect_ext(p)
         if ext not in SUPPORTED_EXTS:
             continue
-
         rp = rel_posix(p, base)
         if is_excluded(rp, exclude_globs, exclude_regexes):
             continue
-
         yield p
 
 
-def main():
-    ap = argparse.ArgumentParser(
-        description="Universal comment stripper (tree-sitter first, safe fallbacks)."
-    )
+def compile_regex_list(patterns: Sequence[str], option_name: str) -> List[Pattern[str]]:
+    out: List[Pattern[str]] = []
+    for pat in patterns:
+        try:
+            out.append(re.compile(pat))
+        except re.error as e:
+            print(f"Invalid {option_name} pattern '{pat}': {e}", file=sys.stderr)
+            sys.exit(2)
+    return out
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="Universal comment stripper.")
     ap.add_argument("target", help="File or directory")
-    ap.add_argument(
-        "--dry-run", action="store_true", help="Do not write changes, only report."
-    )
+    ap.add_argument("--dry-run", action="store_true", help="Do not write changes")
     ap.add_argument(
         "--collapse-blank-lines",
         type=int,
         default=2,
-        help="Max allowed consecutive blank lines (default: 2). Use -1 to disable collapsing.",
+        help="Max allowed consecutive blank lines (default: 2). Use -1 to disable.",
     )
     ap.add_argument(
         "--no-whitespace",
         action="store_true",
-        help="Do not trim trailing spaces or collapse blank lines (only comment removal).",
+        help="Do not trim trailing spaces or collapse blank lines",
     )
     ap.add_argument(
         "--keep-directive",
         action="append",
         default=[],
-        help="Regex for comments to keep (repeatable). Example: 'noqa', 'eslint', 'istanbul', 'pylint:'",
+        help="Regex for comments to keep (repeatable)",
     )
     ap.add_argument(
         "--exclude",
         action="append",
         default=[],
-        help="Glob pattern (repeatable) matched against relative path. Example: 'node_modules/**', '**/*.min.js'",
+        help="Glob pattern matched against relative path (repeatable)",
     )
     ap.add_argument(
         "--exclude-regex",
         action="append",
         default=[],
-        help="Regex (repeatable) matched against relative path. Example: r'(^|/)storage(/|$)'",
+        help="Regex matched against relative path (repeatable)",
     )
     args = ap.parse_args()
 
@@ -415,32 +495,10 @@ def main():
     collapse_blank_lines = (
         None if args.collapse_blank_lines < 0 else args.collapse_blank_lines
     )
-
-    # Default excludes (common heavy/derived dirs). Remove/adjust if you want.
-    default_excludes = [
-        ".git/**",
-        "node_modules/**",
-        "vendor/**",
-        "dist/**",
-        "build/**",
-        "public/build/**",
-        "coverage/**",
-        ".next/**",
-        ".nuxt/**",
-        ".cache/**",
-        "storage/**",
-        "bootstrap/cache/**",
-        "resources/js/actions/**",
-        "venv/**",
-        ".venv/**",
-        "**/*.min.js",
-        "**/*.min.css",
-        ".idea/**",
-        ".vscode/**",
-    ]
-
-    exclude_globs = default_excludes + (args.exclude or [])
-    exclude_regexes = [re.compile(x) for x in (args.exclude_regex or [])]
+    exclude_globs = DEFAULT_EXCLUDES + list(args.exclude or [])
+    exclude_regexes = compile_regex_list(args.exclude_regex or [], "--exclude-regex")
+    keep_res = compile_regex_list(args.keep_directive or [], "--keep-directive")
+    keep_patterns = list(args.keep_directive or [])
 
     changed = 0
     for f in iter_files(
@@ -449,7 +507,8 @@ def main():
         if process_file(
             f,
             collapse_blank_lines=collapse_blank_lines,
-            keep_directives=tuple(args.keep_directive),
+            keep_patterns=keep_patterns,
+            keep_res=keep_res,
             dry_run=args.dry_run,
             no_whitespace=args.no_whitespace,
         ):

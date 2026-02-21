@@ -1,0 +1,154 @@
+// SCSS Test file - complex edge cases
+
+// Simple line comment
+$variable: #ff0000; // inline comment
+
+/* Block comment */
+$another: 10px;
+
+// Variables
+$primary: blue;
+$secondary: green; // variable comment
+
+// Nested rules
+.container {
+    // parent comment
+    padding: 20px;
+    
+    .child {
+        // nested comment
+        color: $primary;
+        
+        .grandchild {
+            // deep nested
+            margin: 0;
+        }
+    }
+}
+
+// Mixins
+@mixin flex-center {
+    // mixin comment
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+@mixin responsive($breakpoint) {
+    // mixin with param
+    @media (min-width: $breakpoint) {
+        @content; // content comment
+    }
+}
+
+// Include mixins
+.element {
+    @include flex-center; // include comment
+    @include responsive(768px) {
+        // nested include
+        width: 100%;
+    }
+}
+
+// Functions
+@function double($n) {
+    // function comment
+    @return $n * 2;
+}
+
+.result {
+    width: double(10px); // function call
+}
+
+// Extend/Inherit
+%placeholder {
+    // placeholder comment
+    color: red;
+}
+
+.extends {
+    @extend %placeholder; // extend comment
+}
+
+// Operators
+.math {
+    width: 100% / 3; // division
+    height: 10px + 5px; // addition
+    margin: 20px - 5px; // subtraction
+}
+
+// Interpolation
+$prop: color;
+.interp {
+    #{$prop}: red; // interpolation comment
+}
+
+// Each loop
+@each $size in small, medium, large {
+    // each comment
+    .text-#{$size} {
+        font-size: $size;
+    }
+}
+
+// For loop
+@for $i from 1 through 5 {
+    // for comment
+    .col-#{$i} {
+        width: 20% * $i;
+    }
+}
+
+// While loop
+$i: 1;
+@while $i <= 5 {
+    // while comment
+    .item-#{$i} { order: $i; }
+    $i: $i + 1;
+}
+
+// If/Else
+@if $condition {
+    // if comment
+    .true { display: block; }
+} @else {
+    // else comment
+    .false { display: none; }
+}
+
+// Maps
+$colors: (
+    // map comment
+    primary: blue,
+    secondary: green, // map item
+);
+
+// Map functions
+.uses-map {
+    color: map-get($colors, primary); // map-get comment
+}
+
+// Partials import
+@import "partial"; // import comment
+
+// Media query
+@include responsive(768px) {
+    // media comment
+    .mobile { width: 100%; }
+}
+
+// CSS comment in SCSS
+.css-block {
+    /* CSS block comment */
+    color: red;
+}
+
+// Mixed comments
+.mixed {
+    // line comment
+    /* block comment */
+    padding: 10px; // inline
+}
+
+// Final
+// end of file
