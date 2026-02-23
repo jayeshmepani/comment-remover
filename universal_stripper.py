@@ -40,6 +40,7 @@ DEFAULT_EXCLUDES = [
     "dist/**",
     "build/**",
     "public/build/**",
+    "public/**",
     "coverage/**",
     ".next/**",
     ".nuxt/**",
@@ -55,6 +56,7 @@ DEFAULT_EXCLUDES = [
     "**/*.min.css",
     ".idea/**",
     ".vscode/**",
+    "tests/**",
 ]
 
 BLADE_COMMENT_RE = re.compile(r"\{\{\-\-.*?\-\-\}\}", re.DOTALL)
@@ -337,9 +339,9 @@ def strip_html_blade_content(
 
 def strip_php_tokens_via_php(text: str, keep_patterns: Sequence[str]) -> Optional[str]:
     php_code = r"""$keep=json_decode($argv[1],true);if(!is_array($keep)){$keep=[];}
-$raw=stream_get_contents(STDIN);$tokens=@token_get_all($raw);if(!is_array($tokens)){fwrite(STDERR,"tokenize failed\n");exit(1);} 
-$compiled=[];foreach($keep as $rx){$safe=str_replace("~","\\~",$rx);$pat="~{$safe}~";if(@preg_match($pat,"")===false){fwrite(STDERR,"bad regex\n");exit(2);} $compiled[]=$pat;}
-$out="";foreach($tokens as $t){if(is_array($t)){if($t[0]===T_COMMENT||$t[0]===T_DOC_COMMENT){$keepit=false;foreach($compiled as $p){if(preg_match($p,$t[1])){$keepit=true;break;}}if($keepit){$out.=$t[1];}else{$out.=preg_replace('/[^\n]/',' ',$t[1]);}continue;}$out.=$t[1];}else{$out.=$t;}}
+$raw=stream_get_contents(STDIN);$tokens=@token_get_all($raw);if(!is_array($tokens)){fwrite(STDERR,"tokenize failed\n");exit(1);}
+$compiled=[];foreach($keep as $rx){$safe=str_replace("~","\\~",$rx);$pat="~{$safe}~u";if(@preg_match($pat,"")===false){fwrite(STDERR,"bad regex\n");exit(2);} $compiled[]=$pat;}
+$out="";foreach($tokens as $t){if(is_array($t)){if($t[0]===T_COMMENT||$t[0]===T_DOC_COMMENT){$keepit=false;foreach($compiled as $p){if(preg_match($p,$t[1])){$keepit=true;break;}}if($keepit){$out.=$t[1];}else{$out.=preg_replace('/[^\n]/u',' ',$t[1]);}continue;}$out.=$t[1];}else{$out.=$t;}}
 echo $out;"""
 
     cmd = ["php", "-r", php_code, json.dumps(list(keep_patterns))]

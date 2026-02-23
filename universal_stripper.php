@@ -2,27 +2,48 @@
 
 $SUPPORTED_EXTS = [
     'php', 'blade.php', 'js', 'jsx', 'ts', 'tsx', 'css', 'scss', 'py', 'html', 'htm',
-    'jinja', 'jinja2', 'j2', 'twig'
+    'jinja', 'jinja2', 'j2', 'twig',
 ];
 
 $DEFAULT_EXCLUDES = [
-    '.git/**', 'node_modules/**', 'vendor/**', 'dist/**', 'build/**', 'public/build/**',
-    'coverage/**', '.next/**', '.nuxt/**', '.cache/**', 'storage/**', 'bootstrap/cache/**',
-    'resources/js/actions/**', 'venv/**', '.venv/**', '*.min.js', '**/*.min.js', '*.min.css', '**/*.min.css',
-    '.idea/**', '.vscode/**'
+    ".git/**",
+    "node_modules/**",
+    "vendor/**",
+    "dist/**",
+    "build/**",
+    "public/build/**",
+    "public/**",
+    "coverage/**",
+    ".next/**",
+    ".nuxt/**",
+    ".cache/**",
+    "storage/**",
+    "bootstrap/cache/**",
+    "resources/js/actions/**",
+    "venv/**",
+    ".venv/**",
+    "*.min.js",
+    "**/*.min.js",
+    "*.min.css",
+    "**/*.min.css",
+    ".idea/**",
+    ".vscode/**",
+    "tests/**",
 ];
 
-function ensure_trailing_newline($s) {
+function ensure_trailing_newline($s)
+{
     return str_ends_with($s, "\n") ? $s : ($s . "\n");
 }
 
-function clean_whitespace($content, $collapse_limit) {
+function clean_whitespace($content, $collapse_limit)
+{
     if (str_ends_with($content, "\n") || str_ends_with($content, "\r")) {
         $content = rtrim($content, "\r\n");
     }
 
-    $lines = preg_split('/\R/', $content);
-    $newlines = [];
+    $lines       = preg_split('/\R/u', $content);
+    $newlines    = [];
     $blank_count = 0;
 
     foreach ($lines as $ln) {
@@ -34,14 +55,15 @@ function clean_whitespace($content, $collapse_limit) {
             }
         } else {
             $blank_count = 0;
-            $newlines[] = $r_ln;
+            $newlines[]  = $r_ln;
         }
     }
 
     return ensure_trailing_newline(implode("\n", $newlines));
 }
 
-function rel_posix($target_path, $base_path) {
+function rel_posix($target_path, $base_path)
+{
     $base_real = realpath($base_path);
     $path_real = realpath($target_path);
 
@@ -56,7 +78,8 @@ function rel_posix($target_path, $base_path) {
     return ltrim(str_replace('\\', '/', $target_path), '/');
 }
 
-function is_excluded($rel_path, $exclude_globs, $exclude_regexes) {
+function is_excluded($rel_path, $exclude_globs, $exclude_regexes)
+{
     foreach ($exclude_globs as $pat) {
         if (fnmatch($pat, $rel_path)) {
             return true;
@@ -75,7 +98,8 @@ function is_excluded($rel_path, $exclude_globs, $exclude_regexes) {
     return false;
 }
 
-function detect_ext($filename) {
+function detect_ext($filename)
+{
     $lower = strtolower($filename);
     if (str_ends_with($lower, '.blade.php')) {
         return 'blade.php';
@@ -88,19 +112,22 @@ function detect_ext($filename) {
     return substr($lower, $pos + 1);
 }
 
-function strip_blade_html_comments($text) {
-    $text = preg_replace('/\{\{\-\-.*?\-\-\}\}/s', '', $text) ?? $text;
-    $text = preg_replace('/<!--(?!\s*(?:\[if |<!\[endif\]))[\s\S]*?-->/', '', $text) ?? $text;
+function strip_blade_html_comments($text)
+{
+    $text = preg_replace('/\{\{\-\-.*?\-\-\}\}/su', '', $text) ?? $text;
+    $text = preg_replace('/<!--(?!\s*(?:\[if |<!\[endif\]))[\s\S]*?-->/u', '', $text) ?? $text;
     return $text;
 }
 
-function strip_jinja_twig_comments($text) {
-    $text = preg_replace('/\{#.*?#\}/s', '', $text) ?? $text;
-    $text = preg_replace('/<!--(?!\s*(?:\[if |<!\[endif\]))[\s\S]*?-->/', '', $text) ?? $text;
+function strip_jinja_twig_comments($text)
+{
+    $text = preg_replace('/\{#.*?#\}/su', '', $text) ?? $text;
+    $text = preg_replace('/<!--(?!\s*(?:\[if |<!\[endif\]))[\s\S]*?-->/u', '', $text) ?? $text;
     return $text;
 }
 
-function matches_keep_directive($comment_text, $keep_res) {
+function matches_keep_directive($comment_text, $keep_res)
+{
     foreach ($keep_res as $r) {
         if (preg_match($r, $comment_text)) {
             return true;
@@ -109,11 +136,12 @@ function matches_keep_directive($comment_text, $keep_res) {
     return false;
 }
 
-function build_user_regexes($patterns, $option_name) {
+function build_user_regexes($patterns, $option_name)
+{
     $compiled = [];
     foreach ($patterns as $rx) {
-        $safe = str_replace('~', '\\~', $rx);
-        $wrapped = "~{$safe}~";
+        $safe    = str_replace('~', '\\~', $rx);
+        $wrapped = "~{$safe}~u";
         if (@preg_match($wrapped, '') === false) {
             fwrite(STDERR, "Invalid {$option_name} pattern '{$rx}'\n");
             exit(2);
@@ -123,9 +151,10 @@ function build_user_regexes($patterns, $option_name) {
     return $compiled;
 }
 
-function strip_php_tokens_native($text, $keep_res) {
+function strip_php_tokens_native($text, $keep_res)
+{
     $tokens = @token_get_all($text);
-    if (!is_array($tokens)) {
+    if (! is_array($tokens)) {
         return $text;
     }
 
@@ -136,7 +165,7 @@ function strip_php_tokens_native($text, $keep_res) {
                 if ($keep_res && matches_keep_directive($token[1], $keep_res)) {
                     $out .= $token[1];
                 } else {
-                    $out .= preg_replace('/[^\n]/', ' ', $token[1]);
+                    $out .= preg_replace('/[^\n]/u', ' ', $token[1]);
                 }
                 continue;
             }
@@ -149,7 +178,8 @@ function strip_php_tokens_native($text, $keep_res) {
     return $out;
 }
 
-function strip_python_with_python_cli($text, $keep_patterns) {
+function strip_python_with_python_cli($text, $keep_patterns)
+{
     $py_code = <<<'PYCODE'
 import io, json, re, sys, tokenize
 keep_patterns = json.loads(sys.argv[1]) if len(sys.argv) > 1 else []
@@ -239,7 +269,7 @@ PYCODE;
     ];
 
     $proc = @proc_open($cmd, $descriptors, $pipes);
-    if (!is_resource($proc)) {
+    if (! is_resource($proc)) {
         return null;
     }
 
@@ -256,7 +286,8 @@ PYCODE;
     return $stdout;
 }
 
-function strip_c_style_comments_safe($text, $keep_res, $is_jsx = false, $allow_line_comments = true, $allow_hash_comments = false, $allow_regex_literals = true) {
+function strip_c_style_comments_safe($text, $keep_res, $is_jsx = false, $allow_line_comments = true, $allow_hash_comments = false, $allow_regex_literals = true)
+{
     $parts = [];
 
     if ($is_jsx) {
@@ -278,7 +309,7 @@ function strip_c_style_comments_safe($text, $keep_res, $is_jsx = false, $allow_l
     $parts[] = $allow_line_comments ? '(\/\/.*$)' : '()';
     $parts[] = $allow_hash_comments ? '(\#.*$)' : '()';
 
-    $regex = '/' . implode('|', $parts) . '/m';
+    $regex     = '/' . implode('|', $parts) . '/mu';
     $processed = @preg_replace_callback($regex, function ($matches) use ($keep_res) {
         $idx = 0;
         $val = '';
@@ -295,7 +326,7 @@ function strip_c_style_comments_safe($text, $keep_res, $is_jsx = false, $allow_l
         }
 
         $is_comment = in_array($idx, [7, 8, 9], true) || ($idx === 1 && trim($val) !== '');
-        if (!$is_comment) {
+        if (! $is_comment) {
             return $val;
         }
 
@@ -308,16 +339,17 @@ function strip_c_style_comments_safe($text, $keep_res, $is_jsx = false, $allow_l
             return $val;
         }
 
-        return preg_replace('/[^\n]/', ' ', $val);
+        return preg_replace('/[^\n]/u', ' ', $val);
     }, $text);
 
     return $processed !== null ? $processed : $text;
 }
 
-function strip_html_blade_content($text, $ext, $keep_res, $keep_patterns) {
+function strip_html_blade_content($text, $ext, $keep_res, $keep_patterns)
+{
     global $SUPPORTED_EXTS;
 
-    $parts = [];
+    $parts   = [];
     $parts[] = '(<script\b[^>]*>)(.*?)(<\/script\s*>)';
     $parts[] = '(<style\b[^>]*>)(.*?)(<\/style\s*>)';
     if ($ext === 'blade.php') {
@@ -331,7 +363,7 @@ function strip_html_blade_content($text, $ext, $keep_res, $keep_patterns) {
     }
     $parts[] = '(<!--(?!\s*(?:\[if |<!\[endif\]))[\s\S]*?-->)';
 
-    $regex = '/' . implode('|', $parts) . '/is';
+    $regex = '/' . implode('|', $parts) . '/isu';
 
     $text = preg_replace_callback($regex, function ($m) use ($keep_res, $keep_patterns) {
         $idx = 0;
@@ -354,9 +386,9 @@ function strip_html_blade_content($text, $ext, $keep_res, $keep_patterns) {
             $inner = strip_php_tokens_native($m[11], $keep_res);
             return $m[10] . $inner . $m[12];
         } elseif ($idx === 13 && isset($m[13])) {
-            return preg_replace('/[^\n]/', ' ', $m[13]);
+            return preg_replace('/[^\n]/u', ' ', $m[13]);
         } elseif ($idx === 14 && isset($m[14])) {
-            return preg_replace('/[^\n]/', ' ', $m[14]);
+            return preg_replace('/[^\n]/u', ' ', $m[14]);
         }
 
         return $m[0];
@@ -365,11 +397,12 @@ function strip_html_blade_content($text, $ext, $keep_res, $keep_patterns) {
     return $text;
 }
 
-function process_file($path, $collapse_limit, $dry_run, $no_whitespace, $keep_patterns, $keep_res) {
+function process_file($path, $collapse_limit, $dry_run, $no_whitespace, $keep_patterns, $keep_res)
+{
     global $SUPPORTED_EXTS;
 
     $ext = detect_ext(basename($path));
-    if (!in_array($ext, $SUPPORTED_EXTS, true)) {
+    if (! in_array($ext, $SUPPORTED_EXTS, true)) {
         return false;
     }
 
@@ -402,7 +435,7 @@ function process_file($path, $collapse_limit, $dry_run, $no_whitespace, $keep_pa
         }
     }
 
-    if (!$no_whitespace) {
+    if (! $no_whitespace) {
         $text = clean_whitespace($text, $collapse_limit);
     } else {
         $text = ensure_trailing_newline($text);
@@ -421,13 +454,13 @@ function process_file($path, $collapse_limit, $dry_run, $no_whitespace, $keep_pa
 }
 
 $args = [
-    'target' => null,
-    'dry_run' => false,
+    'target'               => null,
+    'dry_run'              => false,
     'collapse_blank_lines' => 2,
-    'no_whitespace' => false,
-    'keep_directive' => [],
-    'exclude' => [],
-    'exclude_regex' => []
+    'no_whitespace'        => false,
+    'keep_directive'       => [],
+    'exclude'              => [],
+    'exclude_regex'        => [],
 ];
 
 $cli_args = array_slice($argv, 1);
@@ -439,9 +472,9 @@ for ($i = 0; $i < count($cli_args); $i++) {
     } elseif ($arg === '--no-whitespace') {
         $args['no_whitespace'] = true;
     } elseif (str_starts_with($arg, '--collapse-blank-lines=')) {
-        $args['collapse_blank_lines'] = (int)explode('=', $arg, 2)[1];
+        $args['collapse_blank_lines'] = (int) explode('=', $arg, 2)[1];
     } elseif ($arg === '--collapse-blank-lines') {
-        $args['collapse_blank_lines'] = (int)$cli_args[++$i];
+        $args['collapse_blank_lines'] = (int) $cli_args[++$i];
     } elseif (str_starts_with($arg, '--keep-directive=')) {
         $args['keep_directive'][] = explode('=', $arg, 2)[1];
     } elseif ($arg === '--keep-directive') {
@@ -454,7 +487,7 @@ for ($i = 0; $i < count($cli_args); $i++) {
         $args['exclude_regex'][] = explode('=', $arg, 2)[1];
     } elseif ($arg === '--exclude-regex') {
         $args['exclude_regex'][] = $cli_args[++$i];
-    } elseif (!str_starts_with($arg, '-') && $args['target'] === null) {
+    } elseif (! str_starts_with($arg, '-') && $args['target'] === null) {
         $args['target'] = $arg;
     }
 }
@@ -470,34 +503,34 @@ if ($target_path === false) {
     exit(2);
 }
 
-$collapse_limit = $args['collapse_blank_lines'] < 0 ? null : $args['collapse_blank_lines'];
-$exclude_globs = array_merge($DEFAULT_EXCLUDES, $args['exclude']);
+$collapse_limit  = $args['collapse_blank_lines'] < 0 ? null : $args['collapse_blank_lines'];
+$exclude_globs   = array_merge($DEFAULT_EXCLUDES, $args['exclude']);
 $exclude_regexes = build_user_regexes($args['exclude_regex'], '--exclude-regex');
-$keep_res = build_user_regexes($args['keep_directive'], '--keep-directive');
-$keep_patterns = $args['keep_directive'];
+$keep_res        = build_user_regexes($args['keep_directive'], '--keep-directive');
+$keep_patterns   = $args['keep_directive'];
 
 $changed = 0;
 
 if (is_file($target_path)) {
     $base = dirname($target_path);
-    $rel = rel_posix($target_path, $base);
-    if (!is_excluded($rel, $exclude_globs, $exclude_regexes)) {
+    $rel  = rel_posix($target_path, $base);
+    if (! is_excluded($rel, $exclude_globs, $exclude_regexes)) {
         if (process_file($target_path, $collapse_limit, $args['dry_run'], $args['no_whitespace'], $keep_patterns, $keep_res)) {
             $changed++;
         }
     }
 } else {
     $dir_iterator = new RecursiveDirectoryIterator($target_path, RecursiveDirectoryIterator::SKIP_DOTS);
-    $iterator = new RecursiveIteratorIterator($dir_iterator, RecursiveIteratorIterator::LEAVES_ONLY);
+    $iterator     = new RecursiveIteratorIterator($dir_iterator, RecursiveIteratorIterator::LEAVES_ONLY);
 
     foreach ($iterator as $file) {
-        if (!$file->isFile()) {
+        if (! $file->isFile()) {
             continue;
         }
 
         $path = $file->getPathname();
-        $ext = detect_ext(basename($path));
-        if (!in_array($ext, $SUPPORTED_EXTS, true)) {
+        $ext  = detect_ext(basename($path));
+        if (! in_array($ext, $SUPPORTED_EXTS, true)) {
             continue;
         }
 
