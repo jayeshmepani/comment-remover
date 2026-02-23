@@ -4,11 +4,12 @@ A high-parity universal comment stripper available in both **Python** and **PHP*
 
 It handles file types robustly and natively without altering code integrity, correctly handling edge cases like internet-explorer conditional comments, literal strings, nested templating tags, and regular expressions.
 
-### Features
+## Features
+
 - **Extensive Language Support**: Precisely strips comments in PHP, Blade (`.blade.php`), JavaScript, JSX, TypeScript, TSX, CSS, SCSS, Python, HTML, Jinja2, and Twig.
 - **Literal Safety**: Safe string (`"`, `'`, `` ` ``) and regex literal (`/regex/`) handling to avoid false positives. It natively distinguishes `//` inside a URL (`http://`) versus an actual line comment.
 - **Native Tokenization**: Uses Python's native `tokenize` for `.py` files and PHP's native `token_get_all()` for `.php` files to ensure zero false positives parsing complex syntax.
-- **Embedded Block Support**: Seamlessly processes script headers, style blocks, and Blade `@php` inclusions in HTML structures (`<script>`, `<style>`). Honors exact contents of `@verbatim`. 
+- **Embedded Block Support**: Seamlessly processes script headers, style blocks, and Blade `@php` inclusions in HTML structures (`<script>`, `<style>`). Honors exact contents of `@verbatim`.
 - **100% Parity**: Python and PHP versions behave identically and output exact byte-for-byte structures.
 - **Zero Dependencies**: Entirely self-contained requiring no external requirements or libraries (No `tree_sitter` required).
 
@@ -22,14 +23,16 @@ It handles file types robustly and natively without altering code integrity, cor
 
 ## Usage
 
-Both scripts expose identical arguments. 
+Both scripts expose identical arguments.
 
 ### Python
+
 ```bash
 python universal_stripper.py <target_path> [OPTIONS]
 ```
 
 ### PHP
+
 ```bash
 php universal_stripper.php <target_path> [OPTIONS]
 ```
@@ -48,26 +51,109 @@ php universal_stripper.php <target_path> [OPTIONS]
 
 ## Examples
 
-**1. Process a single file safely without altering it**
-Check how a single file will be formatted:
+### 1. Basic Processing (Required `<target_path>`)
+
+Process a single file or an entire directory safely.
+
+**Python:**
+
+```bash
+python universal_stripper.py resources/views/
+```
+
+**PHP:**
+
+```bash
+php universal_stripper.php resources/views/
+```
+
+### 2. Dry Run (`--dry-run`)
+
+Check which files would be modified without actually changing them.
+
+**Python:**
+
 ```bash
 python universal_stripper.py app/Models/User.php --dry-run
 ```
 
-**2. Strip a full project recursively**
-Recursively strips all supported files under the `src/` directory, collapsing massive empty gaps to only 1 allowed consecutive empty line:
+**PHP:**
+
 ```bash
-php universal_stripper.php src/ --collapse-blank-lines 1
+php universal_stripper.php app/Models/User.php --dry-run
 ```
 
-**3. Strip comments, but keep Linter Directives**
-Protects ESLint overrides and Typescript expectations inside comments:
+### 3. Collapse Blank Lines (`--collapse-blank-lines <int>`)
+Change the maximum consecutive blank lines left behind (default is 2). Set to 0 to heavily compress vertical space.
+
+**Python:**
+
+```bash
+python universal_stripper.py src/ --collapse-blank-lines 1
+```
+
+**PHP:**
+
+```bash
+php universal_stripper.php src/ --collapse-blank-lines 0
+```
+
+### 4. No Whitespace Cleanup (`--no-whitespace`)
+Strips comments but leaves all resulting empty lines and spaces perfectly intact (useful for debugging line mapping).
+
+**Python:**
+
+```bash
+python universal_stripper.py public/js/app.js --no-whitespace
+```
+
+**PHP:**
+
+```bash
+php universal_stripper.php public/js/app.js --no-whitespace
+```
+
+### 5. Keep Directives (`--keep-directive <regex>`)
+Protect specific comments like linter directives or type annotations. Can be passed multiple times.
+
+**Python:**
+
 ```bash
 python universal_stripper.py resources/js --keep-directive ".*eslint-disable.*" --keep-directive ".*@ts-expect-error.*"
 ```
 
-**4. Advanced Exclusions**
-Exclude all files matching a specific regex inside the `tests` directory:
+**PHP:**
+
 ```bash
-php universal_stripper.php tests/ --exclude-regex "^tests\/Fixtures\/.*"
+php universal_stripper.php resources/js --keep-directive ".*eslint-disable.*" --keep-directive ".*@ts-expect-error.*"
+```
+
+### 6. Exclude Globs (`--exclude <glob>`)
+Exclude specific paths using glob patterns (appended to default ignores like `vendor/`, `node_modules/`).
+
+**Python:**
+
+```bash
+python universal_stripper.py ./ --exclude "tests/Feature/**" --exclude "*.min.js"
+```
+
+**PHP:**
+
+```bash
+php universal_stripper.php ./ --exclude "tests/Feature/**" --exclude "*.min.js"
+```
+
+### 7. Exclude Regex (`--exclude-regex <regex>`)
+Exclude specific paths using complex regular expressions.
+
+**Python:**
+
+```bash
+python universal_stripper.py ./ --exclude-regex "^tests\/Fixtures\/.*"
+```
+
+**PHP:**
+
+```bash
+php universal_stripper.php ./ --exclude-regex "^tests\/Fixtures\/.*"
 ```
