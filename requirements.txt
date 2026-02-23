@@ -1,2 +1,10 @@
-# No external dependencies required! 
-# Universal Stripper uses only Python standard library.
+# requirements.txt
+# -----------------
+# There are NO external dependencies required for `universal_stripper.py`.
+#
+# Note: Although the script imports multiple modules (like `argparse`, `re`, 
+# `json`, `subprocess`, `tokenize`, `pathlib`, etc.), all of these are natively 
+# built into the Python Standard Library. 
+#
+# You do NOT need to run `pip install` for any of them. They come pre-installed 
+# with Python 3.6+.

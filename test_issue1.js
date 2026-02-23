@@ -1,4 +1,0 @@
-let obj = {
-    "key//1": "value",
-    "key/*2*/": "value",
-};
