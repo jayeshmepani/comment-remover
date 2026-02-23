@@ -1,2 +1,2 @@
-tree_sitter
-tree_sitter_languages
+# No external dependencies required! 
+# Universal Stripper uses only Python standard library.
